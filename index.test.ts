@@ -595,3 +595,53 @@ describe("Advanced Concurrency & Signals", () => {
         expect(res).toHaveProperty('reason', "stopped");
     });
 });
+
+describe("Identity-based Select Narrowing", () => {
+    test("should correctly identify and execute cases across multiple rounds", async () => {
+        const ch1 = new Chan<string>();
+        const ch2 = new Chan<string>();
+
+        const writeCase = ch2.writeCase("payload");
+        const readCase = ch1.readCase();
+
+        const logs: string[] = [];
+
+        for (let i = 0; i < 3; i++) {
+            // Setup preconditions for each round
+            if (i === 1) {
+                ch1.write("hello"); // Make read ready
+            } else if (i === 2) {
+                // Async consumption to make write ready (unbuffered handoff)
+                setTimeout(() => ch2.read(), 100);
+            }
+
+            const selected = await selectChan({
+                chans: [readCase, writeCase],
+                signal: i === 0 ? AbortSignal.timeout(100) : null,
+                silent: true,
+            });
+
+            // Use switch identity check for narrowing
+            switch (selected) {
+                case readCase:
+                    // TS correctly narrows readCase here
+                    const val = readCase.read()!.value;
+                    logs.push(`round ${i}: read ${val}`);
+                    break;
+                case writeCase:
+                    // TS correctly narrows writeCase here
+                    const ok = writeCase.write()!.ok;
+                    logs.push(`round ${i}: write ${ok}`);
+                    break;
+                default:
+                    // Handle timeout or other reasons
+                    logs.push(`round ${i}: ${(selected as any).reason.name}`);
+                    break;
+            }
+        }
+
+        expect(logs[0]).toContain("TimeoutError");
+        expect(logs[1]).toBe("round 1: read hello");
+        expect(logs[2]).toBe("round 2: write true");
+    });
+});
