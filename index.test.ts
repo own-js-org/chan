@@ -445,3 +445,153 @@ describe("Advanced Concurrency & Timeout Tests", () => {
         })).rejects.toThrow();
     });
 });
+
+describe("Channel Base Functionality", () => {
+    test("Buffered channel storage sequence", () => {
+        const ch = new Chan<number>(2);
+        expect(ch.tryWrite(1).ok).toBe(true);
+        expect(ch.tryWrite(2).ok).toBe(true);
+        expect(ch.tryWrite(3).ok).toBe(false); // Full
+
+        expect(ch.tryRead().value).toBe(1);
+        expect(ch.tryRead().value).toBe(2);
+        expect(ch.tryRead().ok).toBe(false); // Empty
+    });
+
+    test("Unbuffered handoff (Async)", async () => {
+        const ch = new Chan<number>();
+        const readTask = ch.read();
+        const writeResult = await ch.write(100);
+        const readResult = await readTask;
+
+        expect(writeResult.ok).toBe(true);
+        expect(readResult.value).toBe(100);
+    });
+
+    test("Channel closure", async () => {
+        const ch = new Chan<number>();
+        expect(ch.isClosed).toBe(false);
+        ch.close();
+        expect(ch.isClosed).toBe(true);
+        expect(ch.tryWrite(1, { silent: true }).error).toBe(true);
+        expect(ch.tryRead().closed).toBe(true);
+    });
+});
+
+describe("Select Operations", () => {
+    test("Select with default (Non-blocking)", () => {
+        const ch = new Chan<number>();
+        const selected = selectChan({
+            chans: [ch.readCase()],
+            default: true
+        });
+        expect(selected).toBeNull();
+    });
+
+    test("Select randomness (Fairness)", async () => {
+        const ch1 = new Chan<number>(1);
+        const ch2 = new Chan<number>(1);
+        ch1.tryWrite(1);
+        ch2.tryWrite(2);
+
+        const counts = { ch1: 0, ch2: 0 };
+        for (let i = 0; i < 100; i++) {
+            const selected = await selectChan({
+                chans: [ch1.readCase(), ch2.readCase()]
+            });
+            if (selected === ch1.readCase()) {
+                counts.ch1++;
+                ch1.tryWrite(1);
+            } else {
+                counts.ch2++;
+                ch2.tryWrite(2);
+            }
+        }
+        expect(counts.ch1).toBeGreaterThan(10);
+        expect(counts.ch2).toBeGreaterThan(10);
+    });
+
+    test("Mixed Read and Write cases", async () => {
+        const ch = new Chan<number>(1);
+        ch.tryWrite(1); // Full
+
+        // Buffer is full: Read should succeed, Write should block
+        const sel = await selectChan({
+            chans: [ch.readCase(), ch.writeCase(2)]
+        });
+        expect(sel).toBe(ch.readCase());
+        expect((sel as any)?.read()?.value).toBe(1);
+
+        // Now buffer is empty: Write should succeed
+        const sel2 = await selectChan({
+            chans: [ch.readCase(), ch.writeCase(2)]
+        });
+        expect(sel2).toBe(ch.writeCase(2));
+    });
+});
+
+describe("Advanced Concurrency & Signals", () => {
+    test("Mixed Read-Write Stress with Background Consumer", async () => {
+        const dataCh = new Chan<number>(2);
+        const signalCh = new Chan<string>();
+        let readCount = 0;
+        let writeCount = 0;
+
+        // Background consumer for unbuffered signal channel
+        const consumer = (async () => {
+            while (!signalCh.isClosed) {
+                await signalCh.read({ silent: true });
+                await new Promise(r => setTimeout(r, 1));
+            }
+        })();
+
+        for (let i = 0; i < 20; i++) {
+            if (i % 2 === 0) dataCh.tryWrite(i);
+
+            const result = await selectChan({
+                chans: [dataCh.readCase(), signalCh.writeCase("OK")]
+            });
+
+            if (result === dataCh.readCase()) {
+                readCount++;
+                (result as any).read();
+            } else {
+                writeCount++;
+            }
+        }
+
+        signalCh.close();
+        await consumer;
+        expect(readCount + writeCount).toBe(20);
+    });
+
+    test("Signal Timeout racing with data", async () => {
+        const ch = new Chan<number>();
+        const timeoutSignal = AbortSignal.timeout(30);
+
+        // Scenario: Timeout happens before data
+        const start = Date.now();
+        const res = await selectChan({
+            chans: [ch.readCase()],
+            signal: timeoutSignal,
+            silent: true
+        });
+        expect(Date.now() - start).toBeGreaterThanOrEqual(25);
+        expect(res).toHaveProperty('reason');
+    });
+
+    test("Signal already aborted priority", async () => {
+        const ch = new Chan<number>(1);
+        ch.tryWrite(10); // Ready to read
+        const controller = new AbortController();
+        controller.abort("stopped");
+
+        const res = await selectChan({
+            chans: [ch.readCase()],
+            signal: controller.signal,
+            silent: true
+        });
+        // AbortSignal should be checked before ready cases
+        expect(res).toHaveProperty('reason', "stopped");
+    });
+});

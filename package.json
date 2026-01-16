@@ -1,5 +1,6 @@
 {
   "name": "@own-js/chan",
+  "description": "A high-performance, zero-dependency Golang-style channel implementation for TypeScript. Supports buffered/unbuffered channels, select statement with fairness, and AbortSignal integration.",
   "version": "1.0.0",
   "files": [
     "dist"
@@ -38,10 +39,21 @@
   },
   "homepage": "https://github.com/own-js-org/chan#readme",
   "keywords": [
+    "chan",
+    "channel",
+    "csp",
+    "golang",
+    "go-style",
+    "concurrency",
+    "async",
+    "select",
+    "fifo",
+    "queue",
     "bun",
     "deno",
     "nodejs",
-    "zero-dependencies"
+    "zero-dependencies",
+    "typescript"
   ],
   "license": "MIT"
 }
