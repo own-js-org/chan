@@ -26,6 +26,9 @@ bun add @own-js/chan
 
 # Using npm
 npm install @own-js/chan
+
+# Using deno
+deno add npm:@own-js/chan
 ```
 
 ## 🚀 Quick Start
