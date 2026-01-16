@@ -224,3 +224,224 @@ describe("Select WriteCase Operations", () => {
         expect(result.reason.message).toContain("closed");
     });
 });
+
+
+describe("Select Advanced Operations (Default & Mixed Read-Write)", () => {
+
+    test("selectChan: Non-blocking behavior with 'default'", () => {
+        const ch = new Chan<number>(); // Unbuffered and no pending readers/writers
+
+        // If no cases are ready, setting default: true should return null immediately
+        const selected = selectChan({
+            chans: [ch.readCase()],
+            default: true
+        });
+
+        expect(selected).toBeNull();
+    });
+
+    test("selectChan: Mixed ReadCase and WriteCase (Buffer competition)", async () => {
+        const ch = new Chan<number>(1); // Capacity = 1
+
+        // Scenario 1: Buffer is empty. WriteCase should be ready, ReadCase should block.
+        const sel1 = selectChan({
+            chans: [ch.readCase(), ch.writeCase(100)],
+            default: true // Use default for synchronous check
+        });
+        expect(sel1).toBe(ch.writeCase(100));
+        expect(ch.length).toBe(1); // Confirm data entered the buffer
+
+        // Scenario 2: Buffer is full. ReadCase should be ready, WriteCase should block.
+        const sel2 = selectChan({
+            chans: [ch.readCase(), ch.writeCase(200)],
+            default: true
+        });
+        expect(sel2).toBe(ch.readCase());
+        expect((sel2 as any).read()?.value).toBe(100);
+        expect(ch.length).toBe(0); // Confirm data was read
+    });
+
+    test("selectChan: Multi-channel R/W competition (Fairness/Random selection)", async () => {
+        const readerChan = new Chan<string>(1);
+        const writerChan = new Chan<string>(1);
+
+        // Pre-fill readerChan so a read is ready
+        readerChan.tryWrite("data");
+        // Keep writerChan empty so a write is ready
+
+        const counts = { read: 0, write: 0 };
+
+        // Execute multiple selects. When both read and write are possible, distribution should be random.
+        for (let i = 0; i < 100; i++) {
+            const selected = await selectChan({
+                chans: [
+                    readerChan.readCase(),
+                    writerChan.writeCase("payload")
+                ]
+            });
+
+            if (selected === readerChan.readCase()) {
+                counts.read++;
+                readerChan.tryWrite("data"); // Refill data for next iteration
+            } else {
+                counts.write++;
+                writerChan.tryRead(); // Clear data for next iteration
+            }
+        }
+
+        // Verify that both cases were selected significantly (Fairness check)
+        expect(counts.read).toBeGreaterThan(10);
+        expect(counts.write).toBeGreaterThan(10);
+    });
+
+    test("selectChan: AbortSignal priority in mixed mode", async () => {
+        const ch = new Chan<number>();
+        const controller = new AbortController();
+        controller.abort("immediate-stop");
+
+        // Even if cases are potentially executable, if signal is already aborted, 
+        // it should return the abortion reason first.
+        const result = await selectChan({
+            chans: [ch.writeCase(1)],
+            signal: controller.signal,
+            silent: true
+        });
+
+        expect(result).toHaveProperty('reason', "immediate-stop");
+    });
+
+    test("selectChan: Handling multiple closed channels simultaneously", async () => {
+        const ch1 = new Chan<number>();
+        const ch2 = new Chan<number>();
+        ch1.close();
+        ch2.close();
+
+        const selected = await selectChan({
+            chans: [ch1.readCase(), ch2.readCase()]
+        });
+
+        // Any closed channel's readCase should be ready immediately
+        expect([ch1.readCase(), ch2.readCase()]).toContain(selected as any);
+        expect((selected as any).read().closed).toBe(true);
+    });
+});
+
+describe("Advanced Concurrency & Timeout Tests", () => {
+
+    test("Mixed Read-Write: Async handoff with background consumer", async () => {
+        const dataCh = new Chan<number>(2);    // Buffered
+        const signalCh = new Chan<string>();   // Unbuffered
+
+        let readCount = 0;
+        let writeCount = 0;
+
+        // Start a background consumer for the unbuffered channel
+        // This ensures signalCh.writeCase("OK") can eventually succeed
+        const consumer = (async () => {
+            while (!signalCh.isClosed) {
+                await signalCh.read({ silent: true });
+                await new Promise(r => setTimeout(r, 1)); // Small delay to force async
+            }
+        })();
+
+        // Stress test: 50 iterations
+        for (let i = 0; i < 50; i++) {
+            // Ensure dataCh has something occasionally to make readCase ready
+            if (i % 2 === 0) dataCh.tryWrite(i);
+
+            const result = await selectChan({
+                chans: [
+                    dataCh.readCase(),
+                    signalCh.writeCase("OK")
+                ]
+            });
+
+            if (result === dataCh.readCase()) {
+                readCount++;
+                // Reset the case value after reading
+                (result as any).read();
+            } else if (result === signalCh.writeCase("OK")) {
+                writeCount++;
+            }
+        }
+
+        signalCh.close();
+        await consumer;
+
+        // Both cases should have been hit at least once
+        expect(readCount + writeCount).toBe(50);
+        expect(readCount).toBeGreaterThan(0);
+        expect(writeCount).toBeGreaterThan(0);
+    });
+
+    test("Signal Timeout: Abort a pending select after duration", async () => {
+        const ch = new Chan<number>(); // Never written to
+
+        // Use AbortSignal.timeout (available in modern environments like Bun/Node)
+        const timeoutSignal = AbortSignal.timeout(50);
+
+        const start = Date.now();
+        const result = await selectChan({
+            chans: [ch.readCase()],
+            signal: timeoutSignal,
+            silent: true
+        });
+        const duration = Date.now() - start;
+
+        // Verify it returned due to timeout, not data
+        expect(result).toHaveProperty('reason');
+        expect((result as any).reason.name).toBe("TimeoutError");
+        expect(duration).toBeGreaterThanOrEqual(45);
+    });
+
+    test("Signal Timeout: Immediate timeout vs ready case", async () => {
+        const ch = new Chan<number>(1);
+        ch.tryWrite(1); // Data is ready
+
+        // Signal that is already aborted
+        const controller = new AbortController();
+        controller.abort("already-dead");
+
+        const result = await selectChan({
+            chans: [ch.readCase()],
+            signal: controller.signal,
+            silent: true
+        });
+
+        // Even if data is ready, signal check usually happens first in selectChan
+        expect(result).toHaveProperty('reason', "already-dead");
+    });
+
+    test("Signal Timeout: Racing multiple channels with timeout", async () => {
+        const slowCh = new Chan<string>();
+        const fastCh = new Chan<string>();
+        const timeoutSignal = AbortSignal.timeout(30);
+
+        // Slow write happens after timeout
+        setTimeout(() => slowCh.tryWrite("too late"), 100);
+        // Fast write happens before timeout
+        setTimeout(() => fastCh.tryWrite("fast"), 10);
+
+        const result = await selectChan({
+            chans: [slowCh.readCase(), fastCh.readCase()],
+            signal: timeoutSignal,
+            silent: true
+        });
+
+        // Should catch fastCh before timeout triggers
+        expect(result).toBe(fastCh.readCase());
+        expect(fastCh.readCase().read()?.value).toBe("fast");
+    });
+
+    test("Signal Timeout: Silent mode false (should throw)", async () => {
+        const ch = new Chan<number>();
+        const timeoutSignal = AbortSignal.timeout(10);
+
+        // When silent is false, selectChan should throw the error
+        expect(selectChan({
+            chans: [ch.readCase()],
+            signal: timeoutSignal,
+            silent: false
+        })).rejects.toThrow();
+    });
+});
