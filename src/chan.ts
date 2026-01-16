@@ -339,7 +339,7 @@ class _WriteCase<T> implements WriteCase {
     tryInvoke(silent?: Optional<boolean>): boolean {
         const ch = this.ch
         const val = ch.tryWrite(this.val, { silent: silent })
-        if (val.ok === undefined) {
+        if (val.error) {
             this.value_ = {
                 ok: false,
                 error: true,

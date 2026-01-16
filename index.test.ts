@@ -208,19 +208,19 @@ describe("Select WriteCase Operations", () => {
         expect(counts.ch2).toBeGreaterThan(10);
     });
 
-    // test("WriteCase to a closed channel", async () => {
-    //     const ch = new Chan<number>();
-    //     ch.close();
+    test("WriteCase to a closed channel", async () => {
+        const ch = new Chan<number>();
+        ch.close();
 
-    //     // Writing to a closed channel should trigger the case immediately with an error
-    //     const selected = await selectChan({
-    //         chans: [ch.writeCase(1)],
-    //         silent: true
-    //     });
+        // Writing to a closed channel should trigger the case immediately with an error
+        const selected = await selectChan({
+            chans: [ch.writeCase(1)],
+            silent: true
+        });
 
-    //     const result = (selected as any).write();
-    //     expect(result.ok).toBe(false);
-    //     expect(result.error).toBe(true);
-    //     expect(result.reason.message).toContain("closed");
-    // });
+        const result = (selected as any).write();
+        expect(result.ok).toBe(false);
+        expect(result.error).toBe(true);
+        expect(result.reason.message).toContain("closed");
+    });
 });
