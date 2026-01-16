@@ -46,7 +46,7 @@ export class Chan<T> implements ReadChannel<T>, WriteChannel<T> {
         return new Promise((resolve, reject) => {
             const cleanup = (aborted?: boolean) => {
                 if (aborted) {
-                    action.disconet()
+                    action.disconnect()
                 } else {
                     signal?.removeEventListener('abort', onAbort)
                 }
@@ -122,7 +122,7 @@ export class Chan<T> implements ReadChannel<T>, WriteChannel<T> {
         return new Promise((resolve, reject) => {
             const cleanup = (aborted?: boolean) => {
                 if (aborted) {
-                    action.disconet()
+                    action.disconnect()
                 } else {
                     signal?.removeEventListener('abort', onAbort)
                 }
@@ -195,11 +195,25 @@ export class Chan<T> implements ReadChannel<T>, WriteChannel<T> {
             ok: false,
         }
     }
+    private readCase_?: ReadCase<T>
     readCase(): ReadCase<T> {
-        return new _ReadCase<T>(this, this.rw_)
+        let r = this.readCase_
+        if (!r) {
+            r = new _ReadCase<T>(this, this.rw_)
+            this.readCase_ = r
+        }
+        return r
     }
+    private writeCase_?: _WriteCase<T>
     writeCase(val: T): WriteCase {
-        return new _WriteCase(this, this.rw_, val)
+        let w = this.writeCase_
+        if (w) {
+            w._reset(val)
+        } else {
+            w = new _WriteCase(this, this.rw_, val)
+            this.writeCase_ = w
+        }
+        return w
     }
     close(): boolean {
         return this.rw_.close()
@@ -227,8 +241,9 @@ export class Chan<T> implements ReadChannel<T>, WriteChannel<T> {
             }
             if (ok) {
                 yield value!
+            } else {
+                throw reason
             }
-            throw reason
         }
     }
 }
@@ -307,12 +322,16 @@ class _ReadCase<T> implements ReadCase<T> {
 class _WriteCase<T> implements WriteCase {
     constructor(private readonly ch: Chan<T>,
         private readonly rw: RW<T>,
-        private readonly val: T,
+        private val: T,
     ) {
     }
     private value_: WriteValue | null = null
     write(): WriteValue | null {
         return this.value_
+    }
+    _reset(val: T) {
+        this.val = val
+        this.value_ = null
     }
     reset() {
         this.value_ = null

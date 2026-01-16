@@ -24,8 +24,8 @@ class ReadAction {
     /**
      * Release action
      */
-    disconet() {
-        this.reader.disconet(this)
+    disconnect() {
+        this.reader.disconnect(this)
     }
 }
 /**
@@ -79,7 +79,7 @@ class Reader {
     /**
      * Release reading action
      */
-    disconet(action: ReadAction) {
+    disconnect(action: ReadAction) {
         this.actions.remove(action)
     }
 }
@@ -105,8 +105,8 @@ class WirteAction {
     close(reason: any) {
         this.callback(undefined, reason)
     }
-    disconet() {
-        this.writer.disconet(this)
+    disconnect() {
+        this.writer.disconnect(this)
     }
 }
 class Writer {
@@ -149,7 +149,7 @@ class Writer {
         this.actions.push(result)
         return result
     }
-    disconet(action: WirteAction) {
+    disconnect(action: WirteAction) {
         this.actions.remove(action)
     }
 }
@@ -169,6 +169,10 @@ export class RW<T> {
         if (list) {
             const result = list.pop()
             if (!result.done) {
+                const w = this.w_
+                if (!w.isEmpty) {
+                    list.push(w.invoke())
+                }
                 return result
             }
         }

@@ -54,7 +54,7 @@ export class Actions<T> {
      * @remarks
      * Note that the content is in random order.
      */
-    private readonly actions = new Array<T>()
+    private actions: T[] = []
     /**
      * Actions index
      */
@@ -118,7 +118,7 @@ export class Actions<T> {
      * Clear action list
      */
     clear() {
-        this.actions.splice(0)
+        this.actions = []
         this.keys.clear()
     }
     /**

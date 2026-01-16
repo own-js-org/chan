@@ -9,7 +9,7 @@ export interface Connection {
     /**
      * Disconnect and cancel any unexecuted calls.
      */
-    disconet(): void
+    disconnect(): void
 }
 /**
  * Cases available for select to detect
@@ -109,7 +109,7 @@ export function selectChan(opts: SelectOptions): Promise<ChanCase | null | Abort
     }
 
     // shuffle the case to avoid the case in front of the array is always executed when multiple cases are completed at the same time
-    shuffle(chans, chans.length)
+    shuffle(chans)
 
     // check ready case
     for (const chan of chans) {
@@ -127,7 +127,7 @@ export function selectChan(opts: SelectOptions): Promise<ChanCase | null | Abort
                 signal?.removeEventListener('abort', onAbort)
             }
             for (const conn of conns) {
-                conn.disconet()
+                conn.disconnect()
             }
         }
         const cb = (c: ChanCase, hasError?: boolean, reason?: any) => {
@@ -160,13 +160,15 @@ export function selectChan(opts: SelectOptions): Promise<ChanCase | null | Abort
         signal?.addEventListener('abort', onAbort, { once: true })
     })
 }
-function shuffle(arrs: Array<any>, c: number) {
+function shuffle(arrs: Array<any>) {
+    let c = arrs.length
     let r
     while (c !== 0) {
         r = Math.floor(Math.random() * c)
-        c--
         // swap
-        [arrs[c], arrs[r]] = [arrs[r], arrs[c]]
+        const temp = arrs[--c]
+        arrs[c] = arrs[r]
+        arrs[r] = temp
     }
     return arrs
 }
