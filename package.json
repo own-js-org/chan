@@ -1,0 +1,47 @@
+{
+  "name": "@own-js/chan",
+  "version": "1.0.0",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsup": "^8.5.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "build": "tsup ./index.ts --format esm,cjs --dts --clean --minify",
+    "push": "tsup ./index.ts --format esm,cjs --dts --clean --minify && bun publish  --access public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/own-js-org/chan"
+  },
+  "bugs": {
+    "url": "https://github.com/own-js-org/chan/issues"
+  },
+  "author": {
+    "name": "powerpuffpenguin"
+  },
+  "homepage": "https://github.com/own-js-org/chan#readme",
+  "keywords": [
+    "bun",
+    "deno",
+    "nodejs",
+    "zero-dependencies"
+  ],
+  "license": "MIT"
+}
