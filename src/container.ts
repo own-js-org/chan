@@ -32,7 +32,8 @@ export class Ring<T> {
         if (size == 0) {
             return noResult as any
         }
-        const val = this.arrs[this.offset_++]!
+        const val = this.arrs[this.offset_]!
+        this.arrs[this.offset_++] = null as any
         if (this.offset_ == this.arrs.length) {
             this.offset_ = 0
         }
@@ -65,13 +66,22 @@ export class Actions<T> {
     get length(): number {
         return this.actions.length
     }
+    private _pop() {
+        const vals = this.actions
+        const i = vals.length - 1
+        const val = vals[i]
+        vals[i] = null as any
+        vals.pop()
+        return val!
+
+    }
     /**
      * Delete the last action and return it. 
      * @remarks
      * For efficiency reasons, the caller needs to ensure that the current list is not empty.
      */
     pop() {
-        const val = this.actions.pop()!
+        const val = this._pop()
         this.keys.delete(val)
         return val
     }
@@ -82,7 +92,7 @@ export class Actions<T> {
      */
     removeBy(i: number): T {
         const vals = this.actions
-        const swap = vals.pop()!
+        const swap = this._pop()
         const keys = this.keys
         if (i == vals.length) {
             keys.delete(swap)
@@ -105,7 +115,7 @@ export class Actions<T> {
         if (i < 0) {
             return
         }
-        const swap = vals.pop()!
+        const swap = this._pop()
         keys.delete(val)
         if (i == vals.length) {
             return
