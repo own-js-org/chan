@@ -213,7 +213,7 @@ export class RW<T> {
     private list: Ring<T> | undefined
     constructor(buf: number) {
         if (buf > 0) {
-            this.list = new Ring<T>(new Array<T>(buf))
+            this.list = new Ring<T>(new Array(buf))
         }
     }
     private r_ = new Reader()
