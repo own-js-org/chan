@@ -27,9 +27,14 @@ export class Ring<T> {
         this.size_++
         return true
     }
-    pop(): IteratorResult<T> {
+    pop(value: true): null | T
+    pop(value?: boolean): IteratorResult<T>
+    pop(value?: boolean): IteratorResult<T> | T | null {
         const size = this.size_
         if (size == 0) {
+            if (value) {
+                return null
+            }
             return noResult as any
         }
         const val = this.arrs[this.offset_]!
@@ -38,12 +43,17 @@ export class Ring<T> {
             this.offset_ = 0
         }
         this.size_--
+        if (value) {
+            return val
+        }
         return {
             done: false,
             value: val,
         }
     }
 }
+
+
 
 /**
  * Store the read and write operations to be performed.

@@ -12,26 +12,50 @@ class ReadAction {
      * @param reader Associated reader
      * @param callback Execute read callback
      */
-    constructor(private readonly reader: Reader,
-        private readonly callback: ReadCallback,
+    constructor(public reader?: Reader,
+        public callback?: ReadCallback,
     ) { }
     /**
      * Execute data read callback
      */
     invoke(val: IteratorResult<any>) {
-        this.callback(val)
+        const cb = this.callback
+        if (cb) {
+            cb(val)
+        }
     }
     /**
      * Release action
      */
     disconnect() {
-        this.reader.disconnect(this)
+        const reader = this.reader
+        if (reader) {
+            this.reader = undefined
+            this.callback = undefined
+            reader.disconnect(this)
+        }
     }
+
 }
 /**
  * Define a data reader that allows multiple devices to read data from it simultaneously.
  */
 class Reader {
+    static list?: Ring<ReadAction>
+    create(callback: ReadCallback) {
+        const list = Reader.list
+        if (list) {
+            const action = list.pop(true)
+            if (action) {
+                action.reader = this
+                action.callback = callback
+                return action
+            }
+        } else {
+            Reader.list = new Ring<ReadAction>(new Array(128))
+        }
+        return new ReadAction(this, callback)
+    }
     private closed = false
     private actions = new Actions<ReadAction>()
     get isEmpty(): boolean {
@@ -72,7 +96,7 @@ class Reader {
      * Create a reading action
      */
     connect(callback: ReadCallback): ReadAction {
-        const action = new ReadAction(this, callback)
+        const action = this.create(callback)
         this.actions.push(action)
         return action
     }
@@ -81,6 +105,7 @@ class Reader {
      */
     disconnect(action: ReadAction) {
         this.actions.remove(action)
+        Reader.list?.push(action)
     }
 }
 
@@ -95,21 +120,48 @@ class WirteAction {
      * @param value 
      * @param callback Notification write result
      */
-    constructor(private readonly writer: Writer,
-        public readonly value: any,
-        private readonly callback: WriteCallback,
+    constructor(public writer?: Writer,
+        public value?: any,
+        public callback?: WriteCallback,
     ) { }
     invoke() {
-        this.callback(true)
+        const cb = this.callback
+        if (cb) {
+            cb(true)
+        }
     }
     close(reason: any) {
-        this.callback(undefined, reason)
+        const cb = this.callback
+        if (cb) {
+            cb(undefined, reason)
+        }
     }
     disconnect() {
-        this.writer.disconnect(this)
+        const writer = this.writer
+        if (writer) {
+            this.writer = undefined
+            this.callback = undefined
+            this.value = undefined
+            writer.disconnect(this)
+        }
     }
 }
 class Writer {
+    static list?: Ring<WirteAction>
+    create(value: any, callback: WriteCallback) {
+        const list = Writer.list
+        if (list) {
+            const action = list.pop(true)
+            if (action) {
+                action.writer = this
+                action.value = value
+                action.callback = callback
+            }
+        } else {
+            Writer.list = new Ring<WirteAction>(new Array(128))
+        }
+        return new WirteAction(this, value, callback)
+    }
     private closed_ = false
     private actions = new Actions<WirteAction>()
     get isEmpty(): boolean {
@@ -122,13 +174,15 @@ class Writer {
                 throw new ChannelError("writer empty")
             case 1:
                 const p = actions.pop()
+                const val = p.value
                 p.invoke()
-                return p.value
+                return val
         }
         const i = Math.floor(Math.random() * actions.length)
         const p = actions.removeBy(i)
+        const val = p.value
         p.invoke()
-        return p.value
+        return val
     }
     close() {
         if (this.closed_) {
@@ -144,13 +198,14 @@ class Writer {
             actions.clear()
         }
     }
-    connect(val: any, callback: WriteCallback): WirteAction {
-        const result = new WirteAction(this, val, callback)
-        this.actions.push(result)
-        return result
+    connect(value: any, callback: WriteCallback): WirteAction {
+        const action = this.create(value, callback)
+        this.actions.push(action)
+        return action
     }
     disconnect(action: WirteAction) {
         this.actions.remove(action)
+        Writer.list?.push(action)
     }
 }
 
